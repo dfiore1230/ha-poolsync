@@ -1,0 +1,70 @@
+name: Build & Release
+
+on:
+  push:
+    tags:
+      - 'v*'   # e.g., v0.1.1
+
+permissions:
+  contents: write  # needed to create releases & upload assets
+
+jobs:
+  build-release:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout
+      - uses: actions/checkout@v4
+
+      - name: Extract version from tag
+        id: v
+        run: |
+          TAG="${GITHUB_REF##*/}"        # refs/tags/v0.1.1 -> v0.1.1
+          VERSION="${TAG#v}"             # v0.1.1 -> 0.1.1
+          echo "tag=${TAG}" >> $GITHUB_OUTPUT
+          echo "version=${VERSION}" >> $GITHUB_OUTPUT
+
+      - name: Validate manifest.json exists
+        run: |
+          test -f custom_components/poolsync/manifest.json || {
+            echo "::error file=custom_components/poolsync/manifest.json::manifest.json not found"
+            exit 1
+          }
+
+      - name: Ensure manifest version matches tag
+        run: |
+          VERSION='${{ steps.v.outputs.version }}'
+          FILE=custom_components/poolsync/manifest.json
+          MANIFEST_VERSION=$(python - <<'PY'
+import json,sys
+with open(sys.argv[1]) as f:
+    print(json.load(f)["version"])
+PY
+          "$FILE")
+          echo "Manifest version: $MANIFEST_VERSION"
+          echo "Tag version:      $VERSION"
+          if [ "$MANIFEST_VERSION" != "$VERSION" ]; then
+            echo "::error file=$FILE::manifest version ($MANIFEST_VERSION) does not match tag ($VERSION)"
+            exit 1
+          fi
+
+      - name: Build ZIP artifact
+        run: |
+          NAME="ha-poolsync_${{ steps.v.outputs.version }}.zip"
+          zip -r "$NAME" custom_components/ README.md LICENSE hacs.json
+          echo "artifact=$NAME" >> $GITHUB_ENV
+
+      - name: Create GitHub Release (or update)
+        uses: softprops/action-gh-release@v2
+        with:
+          tag_name: ${{ steps.v.outputs.tag }}
+          name: PoolSync ${{ steps.v.outputs.tag }}
+          body: |
+            Release ${{ steps.v.outputs.tag }}
+
+            - Automated build from manifest version.
+            - Includes ready-to-install ZIP for HACS manual/custom install.
+          files: ${{ env.artifact }}
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
