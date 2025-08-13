@@ -20,28 +20,39 @@ class PoolSyncApi:
         self._timeout = max(5, int(timeout))
 
     def _headers(self) -> Dict[str, str]:
+        # Device expects these custom headers; aiohttp will also add Content-Type when using json=...
         return {"Authorization": self._auth, "user": self._user}
 
     async def get_poolsync_all(self) -> Dict[str, Any]:
-        """GET {base}/api/poolsync?cmd=poolSync&all="""
+        """GET {base}/api/poolsync?cmd=poolSync&all"""
         url = f"{self._base}/api/poolsync"
         params = {"cmd": "poolSync", "all": ""}
         _LOGGER.debug("GET %s params=%s", url, params)
         async with self._session.get(url, headers=self._headers(), params=params, timeout=self._timeout) as resp:
             text = await resp.text()
-            _LOGGER.debug("PoolSync %s -> %s; body[0:1000]=%s", url, resp.status, text[:1000])
+            _LOGGER.debug("PoolSync GET %s -> %s; body[0:1000]=%s", url, resp.status, text[:1000])
             resp.raise_for_status()
+            # Expect JSON here
             return await resp.json(content_type=None)
 
     async def _patch_devices(self, device_index: Union[str, int], payload: Dict[str, Any]) -> Dict[str, Any]:
+        """PATCH devices endpoint; response may be non-JSON (e.g., 'OK')."""
         url = f"{self._base}/api/poolsync"
         params = {"cmd": "devices", "device": str(device_index)}
         _LOGGER.debug("PATCH %s params=%s json=%s", url, params, payload)
-        async with self._session.patch(url, headers=self._headers(), params=params, json=payload, timeout=self._timeout) as resp:
-            text = await resp.text()
-            _LOGGER.debug("PoolSync PATCH %s -> %s; body[0:1000]=%s", url, resp.status, text[:1000])
+        async with self._session.patch(
+            url, headers=self._headers(), params=params, json=payload, timeout=self._timeout
+        ) as resp:
+            raw = await resp.text()
+            _LOGGER.debug("PoolSync PATCH %s -> %s; body[0:1000]=%s", url, resp.status, raw[:1000])
             resp.raise_for_status()
-            return await resp.json(content_type=None)
+            # Try JSON first; fall back to text/empty
+            if not raw.strip():
+                return {"ok": True, "raw": ""}
+            try:
+                return await resp.json(content_type=None)
+            except Exception:
+                return {"ok": True, "raw": raw}
 
     async def set_chlor_output(self, device_index: Union[str, int], percent: int) -> Dict[str, Any]:
         percent = max(0, min(100, int(percent)))
@@ -51,3 +62,4 @@ class PoolSyncApi:
     async def set_boost_mode(self, device_index: Union[str, int], enabled: bool) -> Dict[str, Any]:
         payload = {"boostMode": bool(enabled)}
         return await self._patch_devices(device_index, payload)
+
