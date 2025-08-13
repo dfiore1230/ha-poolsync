@@ -62,7 +62,7 @@ class PoolSyncSensor(CoordinatorEntity[PoolSyncCoordinator], SensorEntity):
             name="PoolSync Bridge",
             sw_version=str(sys.get("fwVersion", "")),
             model=str(sys.get("hwVersion", "")),
-            connections={(("mac", mac),)} if mac else None,
+            connections={(CONNECTION_NETWORK_MAC, mac)} if mac else None,
         )
 
     def _walk(self) -> Optional[Any]:
