@@ -1,0 +1,9 @@
+{
+  "name": "PoolSync",
+  "zip_release": false,
+  "render_readme": true,
+  "content_in_root": false,
+  "domains": ["poolsync"],
+  "country": ["US"],
+  "homeassistant": "2023.8.0"
+}
