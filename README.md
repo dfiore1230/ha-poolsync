@@ -1,6 +1,9 @@
 
 # PoolSync – Home Assistant Custom Integration
 
+### Notes
+- Made with a mix of brute force, coffee and ChatGPT
+
 A lightweight, local-polling integration for the PoolSync bridge.
 
 - ✅ GUI-based setup (Config Flow)
