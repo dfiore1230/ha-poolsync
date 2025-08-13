@@ -10,6 +10,7 @@
           "user_token": "User token header value",
           "device_index": "Device index (usually 0)",
           "scan_interval": "Scan interval (seconds)",
+          "timeout": "HTTP timeout (seconds)",
           "assume_fahrenheit": "Assume waterTemp is \u00b0F (convert to \u00b0C)"
         }
       }
