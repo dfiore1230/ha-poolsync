@@ -9,6 +9,7 @@ from homeassistant.const import UnitOfTemperature
 from homeassistant.core import HomeAssistant
 from homeassistant.helpers.entity import DeviceInfo
 from homeassistant.helpers.update_coordinator import CoordinatorEntity
+from homeassistant.helpers.device_registry import CONNECTION_NETWORK_MAC
 
 from .const import DOMAIN, COORDINATOR_NAME, CONF_DEVICE_INDEX, CONF_ASSUME_FAHRENHEIT
 from .coordinator import PoolSyncCoordinator
