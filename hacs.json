@@ -1,0 +1,10 @@
+{
+  "name": "PoolSync",
+  "domains": [
+    "poolsync"
+  ],
+  "country": [
+    "US"
+  ],
+  "render_readme": true
+}
