@@ -1,16 +1,13 @@
+
 DOMAIN = "poolsync"
 
 CONF_BASE_URL = "base_url"
-CONF_AUTH = "authorization"
-CONF_USER = "user_token"
-CONF_DEVICE_INDEX = "device_index"
-CONF_SCAN_INTERVAL = "scan_interval"
-CONF_ASSUME_FAHRENHEIT = "assume_fahrenheit"
-CONF_TIMEOUT = "timeout"
+CONF_USER_ID = "user_id"
+CONF_TOKEN = "token"
+CONF_POLL_SECONDS = "poll_seconds"
+CONF_REQUEST_TIMEOUT = "request_timeout"
 
-DEFAULT_SCAN_INTERVAL = 300  # 5 minutes
-DEFAULT_DEVICE_INDEX = "0"
-DEFAULT_ASSUME_FAHRENHEIT = False
-DEFAULT_TIMEOUT = 30  # seconds
+DEFAULT_POLL_SECONDS = 300
+DEFAULT_REQUEST_TIMEOUT = 30
 
-COORDINATOR_NAME = "poolsync_coordinator"
+ATTR_MAC = "mac"

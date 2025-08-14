@@ -1,18 +1,11 @@
 {
   "domain": "poolsync",
   "name": "PoolSync",
-  "version": "0.1.5",
-  "config_flow": true,
-  "documentation": "https://github.com/dfiore1230/ha-poolsync",
-  "issue_tracker": "https://github.com/dfiore1230/ha-poolsync/issues",
+  "version": "0.4.2",
+  "iot_class": "local_polling",
   "codeowners": [
     "@dfiore1230"
   ],
-  "iot_class": "local_polling",
-  "integration_type": "hub",
-  "loggers": [
-    "custom_components.poolsync"
-  ],
-  "requirements": [],
-  "dependencies": []
+  "config_flow": true,
+  "requirements": []
 }

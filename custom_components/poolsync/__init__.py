@@ -1,50 +1,72 @@
+
 from __future__ import annotations
 
+from datetime import timedelta
 import logging
-from aiohttp import ClientSession
+
 from homeassistant.config_entries import ConfigEntry
 from homeassistant.core import HomeAssistant
-from homeassistant.helpers.aiohttp_client import async_get_clientsession
+from homeassistant.helpers.typing import ConfigType
 
-from .api import PoolSyncApi
 from .const import (
-    DOMAIN, CONF_BASE_URL, CONF_AUTH, CONF_USER,
-    CONF_SCAN_INTERVAL, COORDINATOR_NAME, CONF_TIMEOUT
+    DOMAIN,
+    CONF_BASE_URL,
+    CONF_USER_ID,
+    CONF_TOKEN,
+    CONF_POLL_SECONDS,
+    CONF_REQUEST_TIMEOUT,
+    DEFAULT_POLL_SECONDS,
+    DEFAULT_REQUEST_TIMEOUT,
 )
+from .api import PoolSyncApi
 from .coordinator import PoolSyncCoordinator
 
 _LOGGER = logging.getLogger(__name__)
-PLATFORMS: list[str] = ["sensor", "number", "switch"]
+
+PLATFORMS: list[str] = ["sensor", "switch", "number"]
+
+async def async_setup(hass: HomeAssistant, config: ConfigType) -> bool:
+    return True
 
 async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
-    session: ClientSession = async_get_clientsession(hass)
+    hass.data.setdefault(DOMAIN, {})
 
-    scan = entry.options.get(CONF_SCAN_INTERVAL, entry.data.get(CONF_SCAN_INTERVAL))
-    timeout = entry.options.get(CONF_TIMEOUT, entry.data.get(CONF_TIMEOUT, 30))
+    data = dict(entry.data)
+
+    # Normalize / defaults
+    poll_seconds = int(data.get(CONF_POLL_SECONDS, DEFAULT_POLL_SECONDS))
+    request_timeout = int(data.get(CONF_REQUEST_TIMEOUT, DEFAULT_REQUEST_TIMEOUT))
 
     api = PoolSyncApi(
-        session,
-        base_url=entry.data[CONF_BASE_URL],
-        auth=entry.data[CONF_AUTH],
-        user=entry.data[CONF_USER],
-        timeout=timeout,
+        hass=hass,
+        base_url=data[CONF_BASE_URL],
+        token=data.get(CONF_TOKEN),
+        user_id=data.get(CONF_USER_ID),
+        request_timeout=request_timeout,
     )
 
-    coordinator = PoolSyncCoordinator(hass, api, scan_interval=scan)
+    coordinator = PoolSyncCoordinator(
+        hass=hass,
+        api=api,
+        scan_interval=timedelta(seconds=poll_seconds),
+    )
     await coordinator.async_config_entry_first_refresh()
 
-    hass.data.setdefault(DOMAIN, {})
-    hass.data[DOMAIN][entry.entry_id] = {COORDINATOR_NAME: coordinator, "api": api}
+    hass.data[DOMAIN][entry.entry_id] = {"api": api, "coordinator": coordinator}
 
     await hass.config_entries.async_forward_entry_setups(entry, PLATFORMS)
-    entry.async_on_unload(entry.add_update_listener(async_reload_entry))
+
+    _LOGGER.debug(
+        "PoolSync setup complete: base_url=%s, user_id=%s, poll=%ss, timeout=%ss",
+        data[CONF_BASE_URL],
+        data.get(CONF_USER_ID),
+        poll_seconds,
+        request_timeout,
+    )
     return True
 
 async def async_unload_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
-    ok = await hass.config_entries.async_unload_platforms(entry, PLATFORMS)
-    if ok:
+    unload_ok = await hass.config_entries.async_unload_platforms(entry, PLATFORMS)
+    if unload_ok:
         hass.data[DOMAIN].pop(entry.entry_id, None)
-    return ok
-
-async def async_reload_entry(hass: HomeAssistant, entry: ConfigEntry) -> None:
-    await hass.config_entries.async_reload(entry.entry_id)
+    return unload_ok

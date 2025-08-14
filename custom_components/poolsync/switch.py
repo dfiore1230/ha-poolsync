@@ -1,71 +1,70 @@
 from __future__ import annotations
 
-import logging
+from typing import Any
 
 from homeassistant.components.switch import SwitchEntity
-from homeassistant.config_entries import ConfigEntry
 from homeassistant.core import HomeAssistant
-from homeassistant.helpers.entity import DeviceInfo
 from homeassistant.helpers.update_coordinator import CoordinatorEntity
+from homeassistant.config_entries import ConfigEntry
 
-from .const import DOMAIN, COORDINATOR_NAME, CONF_DEVICE_INDEX
+from .const import DOMAIN
 from .coordinator import PoolSyncCoordinator
-from .api import PoolSyncApi
 
-_LOGGER = logging.getLogger(__name__)
 
-async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry, async_add_entities):
-    data = hass.data[DOMAIN][entry.entry_id]
-    coordinator: PoolSyncCoordinator = data[COORDINATOR_NAME]
-    api: PoolSyncApi = data["api"]
-    device_index = entry.data.get(CONF_DEVICE_INDEX, "0")
-    async_add_entities([PoolSyncBoostSwitch(coordinator, entry, api, device_index)], True)
+def _g(d: dict, *path, default=None):
+    cur: Any = d
+    for p in path:
+        if not isinstance(cur, dict) or p not in cur:
+            return default
+        cur = cur[p]
+    return cur
+
+
+async def async_setup_entry(
+    hass: HomeAssistant, entry: ConfigEntry, async_add_entities
+) -> None:
+    coordinator: PoolSyncCoordinator = hass.data[DOMAIN][entry.entry_id]["coordinator"]
+
+    # For now we only know about device index 0 (chlorSync)
+    entities: list[SwitchEntity] = [
+        PoolSyncBoostSwitch(coordinator, device_index=0),
+    ]
+    async_add_entities(entities, update_before_add=True)
+
 
 class PoolSyncBoostSwitch(CoordinatorEntity[PoolSyncCoordinator], SwitchEntity):
-    _attr_name = "Salt Boost (24h)"
-    _attr_icon = "mdi:flash"
-    _attr_has_entity_name = True
+    """24h Salt Boost toggle for ChlorSync."""
 
-    def __init__(self, coordinator, entry, api: PoolSyncApi, device_index: str) -> None:
+    def __init__(self, coordinator: PoolSyncCoordinator, device_index: int = 0) -> None:
         super().__init__(coordinator)
-        self._entry = entry
-        self._api = api
-        self._device_index = str(device_index)
-        self._attr_unique_id = f"{entry.entry_id}_switch_boost_mode"
+        self._device_index = device_index
+        mac = coordinator.api.mac_address or "poolsync"
+        self._attr_unique_id = f"{mac}_boost_{device_index}"
+        self._attr_name = "Salt Boost (24h)"
+        self._attr_icon = "mdi:rocket-launch"
 
-    @property
-    def device_info(self) -> DeviceInfo:
-        data = self.coordinator.data or {}
-        sys = ((data.get("poolSync") or {}).get("system") or {})
-        return DeviceInfo(
-            identifiers={(DOMAIN, self._entry.entry_id)},
-            manufacturer="PoolSync",
-            name="PoolSync Bridge",
-            sw_version=str(sys.get("fwVersion", "")),
-            model=str(sys.get("hwVersion", "")),
-        )
+        self._attr_device_info = {
+            "identifiers": {(DOMAIN, mac)},
+            "manufacturer": "AquaCal",
+            "name": "PoolSync",
+            "model": "PoolSync",
+        }
 
     @property
     def is_on(self) -> bool:
         data = self.coordinator.data or {}
-        devices = data.get("devices") or {}
-        dev = devices.get(self._device_index) or {}
-        cfg = dev.get("config") or {}
-        status = dev.get("status") or {}
-        if "boostMode" in cfg:
-            try:
-                return bool(cfg.get("boostMode"))
-            except Exception:
-                return False
+        # No explicit boolean in sample JSON; infer from boostRemaining minutes > 0
+        remaining = _g(data, "devices", "0", "status", "boostRemaining", default=0)
         try:
-            return int(status.get("boostRemaining") or 0) > 0
+            return int(remaining) > 0
         except Exception:
             return False
 
-    async def async_turn_on(self, **kwargs) -> None:
-        await self._api.set_boost_mode(self._device_index, True)
+    async def async_turn_on(self, **kwargs: Any) -> None:
+        await self.coordinator.api.set_boost_mode(self._device_index, True)
         await self.coordinator.async_request_refresh()
 
-    async def async_turn_off(self, **kwargs) -> None:
-        await self._api.set_boost_mode(self._device_index, False)
+    async def async_turn_off(self, **kwargs: Any) -> None:
+        await self.coordinator.api.set_boost_mode(self._device_index, False)
         await self.coordinator.async_request_refresh()
+

@@ -1,65 +1,235 @@
+# custom_components/poolsync/api.py
 from __future__ import annotations
 
+import asyncio
+import json
 import logging
-from typing import Any, Dict, Union
+import uuid
+from typing import Any, Dict, Optional, Tuple
+
 import aiohttp
+from aiohttp import ClientSession, ClientTimeout
+
+from homeassistant.core import HomeAssistant
+from homeassistant.helpers.aiohttp_client import async_get_clientsession
 
 _LOGGER = logging.getLogger(__name__)
 
+
 class PoolSyncApi:
-    """Async client for PoolSync."""
+    """HTTP client for the local PoolSync device API."""
 
-    def __init__(self, session: aiohttp.ClientSession, base_url: str, auth: str, user: str, timeout: int = 30) -> None:
-        self._session = session
-        self._base = base_url.rstrip("/")
-        self._auth = auth
-        self._user = user
-        self._timeout = max(5, int(timeout))
+    def __init__(
+        self,
+        hass: HomeAssistant,
+        base_url: str,
+        token: Optional[str] = None,
+        user_id: Optional[str] = None,
+        session: Optional[ClientSession] = None,
+        request_timeout: Optional[float] = None,
+    ) -> None:
+        self.hass = hass
+        self._base_url = base_url.rstrip("/")
+        self.token = token or None
+        self.user_id = user_id or None  # device expects a lower-case 'user' header; may be None
+        self.mac_address: Optional[str] = None
+        self._session: ClientSession = session or async_get_clientsession(hass)
+        # default timeout used when a call doesn't provide one explicitly
+        self._default_timeout: float = float(request_timeout) if request_timeout else 15.0
 
-    def set_timeout(self, timeout: int) -> None:
-        self._timeout = max(5, int(timeout))
+    # -----------------------
+    # Internal request helper
+    # -----------------------
+    async def _request_json(
+        self,
+        method: str,
+        path: str,
+        params: Optional[Dict[str, Any]] = None,
+        headers: Optional[Dict[str, str]] = None,
+        json_body: Optional[Dict[str, Any]] = None,
+        timeout_total: Optional[float] = None,
+    ) -> Tuple[int, str, Optional[Dict[str, Any]]]:
+        """Send an HTTP request and return (status, text, json_or_none)."""
+        url = f"{self._base_url}{path}"
+        params = params or {}
+        headers = headers or {}
 
-    def _headers(self) -> Dict[str, str]:
-        # Device expects these custom headers; aiohttp will also add Content-Type when using json=...
-        return {"Authorization": self._auth, "user": self._user}
+        base_headers = {
+            "Accept": "application/json",
+            "Accept-Encoding": "gzip, deflate",
+        }
+        if self.token:
+            base_headers["Authorization"] = self.token
+        if self.user_id:
+            base_headers["user"] = self.user_id  # device requires a lowercase 'user' header
 
+        base_headers.update(headers)
+
+        total = timeout_total if timeout_total is not None else self._default_timeout
+
+        try:
+            async with self._session.request(
+                method=method,
+                url=url,
+                params=params,
+                headers=base_headers,
+                json=json_body,
+                timeout=ClientTimeout(total=total),
+            ) as resp:
+                text = await resp.text()
+                _LOGGER.debug(
+                    "%s %s %s -> %s, body[%d]=%s",
+                    method, url, params, resp.status, len(text), text[:300],
+                )
+                parsed: Optional[Dict[str, Any]] = None
+                if text:
+                    try:
+                        parsed = json.loads(text)
+                    except Exception:
+                        parsed = None
+                return resp.status, text, parsed
+        except Exception as exc:
+            _LOGGER.debug("HTTP request error %s %s: %s", method, url, exc)
+            return 0, str(exc), None
+
+    # -----------------------
+    # Public high-level calls
+    # -----------------------
     async def get_poolsync_all(self) -> Dict[str, Any]:
-        """GET {base}/api/poolsync?cmd=poolSync&all"""
-        url = f"{self._base}/api/poolsync"
-        params = {"cmd": "poolSync", "all": ""}
-        _LOGGER.debug("GET %s params=%s", url, params)
-        async with self._session.get(url, headers=self._headers(), params=params, timeout=self._timeout) as resp:
-            text = await resp.text()
-            _LOGGER.debug("PoolSync GET %s -> %s; body[0:1000]=%s", url, resp.status, text[:1000])
-            resp.raise_for_status()
-            # Expect JSON here
-            return await resp.json(content_type=None)
+        """GET /api/poolsync?cmd=poolSync&all."""
+        status, text, data = await self._request_json(
+            "GET",
+            "/api/poolsync",
+            params={"cmd": "poolSync", "all": ""},
+            timeout_total=None,  # use default
+        )
+        if status != 200 or not isinstance(data, dict):
+            raise RuntimeError(f"poolSync all failed: status={status}, body={text}")
 
-    async def _patch_devices(self, device_index: Union[str, int], payload: Dict[str, Any]) -> Dict[str, Any]:
-        """PATCH devices endpoint; response may be non-JSON (e.g., 'OK')."""
-        url = f"{self._base}/api/poolsync"
-        params = {"cmd": "devices", "device": str(device_index)}
-        _LOGGER.debug("PATCH %s params=%s json=%s", url, params, payload)
-        async with self._session.patch(
-            url, headers=self._headers(), params=params, json=payload, timeout=self._timeout
-        ) as resp:
-            raw = await resp.text()
-            _LOGGER.debug("PoolSync PATCH %s -> %s; body[0:1000]=%s", url, resp.status, raw[:1000])
-            resp.raise_for_status()
-            # Try JSON first; fall back to text/empty
-            if not raw.strip():
-                return {"ok": True, "raw": ""}
-            try:
-                return await resp.json(content_type=None)
-            except Exception:
-                return {"ok": True, "raw": raw}
+        # learn MAC if present
+        try:
+            mac = data.get("poolSync", {}).get("system", {}).get("macAddr")
+            if mac and not self.mac_address:
+                self.mac_address = str(mac)
+        except Exception:
+            pass
 
-    async def set_chlor_output(self, device_index: Union[str, int], percent: int) -> Dict[str, Any]:
-        percent = max(0, min(100, int(percent)))
-        payload = {"config": {"chlorOutput": percent}}
-        return await self._patch_devices(device_index, payload)
+        return data
 
-    async def set_boost_mode(self, device_index: Union[str, int], enabled: bool) -> Dict[str, Any]:
-        payload = {"boostMode": bool(enabled)}
-        return await self._patch_devices(device_index, payload)
+    async def set_chlor_output(self, device_index: int, value: int) -> Dict[str, Any]:
+        """PATCH /api/poolsync?cmd=devices&device=<index> with {'chlorOutput': <int>}."""
+        return await self._patch_devices(device_index, {"chlorOutput": int(value)})
+
+    async def set_boost_mode(self, device_index: int, on: bool) -> Dict[str, Any]:
+        """PATCH /api/poolsync?cmd=devices&device=<index> with {'boostMode': bool}."""
+        return await self._patch_devices(device_index, {"boostMode": bool(on)})
+
+    async def _patch_devices(self, device_index: int, payload: Dict[str, Any]) -> Dict[str, Any]:
+        headers = {"Content-Type": "application/json"}
+        status, text, data = await self._request_json(
+            "PATCH",
+            "/api/poolsync",
+            params={"cmd": "devices", "device": str(device_index)},
+            headers=headers,
+            json_body=payload,
+            timeout_total=None,  # use default
+        )
+        if status != 200:
+            raise RuntimeError(f"devices PATCH failed: status={status}, body={text}")
+        return {"ok": True, "raw": text} if data is None else data
+
+    # -----------------------
+    # Push-link (auto-ephemeral user)
+    # -----------------------
+    async def async_pushlink_exchange(
+        self,
+        user_id: Optional[str],
+        poll_interval: float = 0.5,
+        timeout: float = 60.0,
+    ) -> Tuple[bool, Optional[str], Optional[str], Optional[str], Optional[str]]:
+        """
+        Start push-link and poll for {"macAddress": "...", "password": "..."}.
+        If user_id is None, generate a fresh ephemeral UUID and send it as the
+        lowercase 'user' header for ALL push-link requests.
+
+        Returns: (ok, mac, token, used_user, err)
+        """
+        base_path = "/api/poolsync"
+
+        # If no user provided, generate one just for this run
+        used_user = user_id or str(uuid.uuid4())
+
+        def _push_headers() -> Dict[str, str]:
+            return {
+                "Accept": "application/json",
+                "Accept-Encoding": "gzip, deflate",
+                "user": used_user,
+            }
+
+        _LOGGER.debug(
+            "Starting push-link (base_url=%s, user=%s, poll=%.1fs, timeout=%ds)",
+            self._base_url,
+            None if user_id is None else "<provided>",
+            poll_interval,
+            int(timeout),
+        )
+
+        # 1) Start the window
+        st, text, _ = await self._request_json(
+            "PUT",
+            base_path,
+            params={"cmd": "pushLink", "start": ""},
+            headers=_push_headers(),
+            timeout_total=self._default_timeout,
+        )
+        if st != 200:
+            return False, None, None, used_user, f"pushLink start failed: status={st}, body={text}"
+
+        # 2) Poll
+        loop = asyncio.get_event_loop()
+        deadline = loop.time() + timeout
+        poll = 0
+
+        while True:
+            if loop.time() >= deadline:
+                _LOGGER.debug("push-link timed out after %.0fs", timeout)
+                return False, None, None, used_user, "push-link timed out"
+
+            poll += 1
+            st, text, data = await self._request_json(
+                "GET",
+                base_path,
+                params={"cmd": "pushLink", "status": ""},
+                headers=_push_headers(),
+                timeout_total=self._default_timeout,
+            )
+
+            # Log the full raw response every poll
+            _LOGGER.debug("push-link poll #%d RAW: %s", poll, text)
+
+            if st == 200 and isinstance(data, dict):
+                mac = data.get("macAddress") or data.get("mac")
+                pw = data.get("password") or data.get("pass") or data.get("token")
+                rem = data.get("timeRemaining")
+
+                if pw:
+                    self.mac_address = mac or self.mac_address
+                    # Also set on this instance so immediate calls work (config flow still stores it)
+                    self.user_id = used_user
+                    self.token = pw
+                    _LOGGER.debug(
+                        "push-link SUCCESS: mac=%s password(len=%d)",
+                        self.mac_address or "?",
+                        len(pw),
+                    )
+                    return True, mac, pw, used_user, None
+
+                if isinstance(rem, int) and rem <= 0:
+                    _LOGGER.debug(
+                        "push-link window ended (timeRemaining=%s) without password in this poll",
+                        rem,
+                    )
+                    return False, None, None, used_user, "push-link ended without password"
+
+            await asyncio.sleep(poll_interval)
 

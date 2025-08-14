@@ -1,184 +1,291 @@
 from __future__ import annotations
 
-import logging
-from typing import Any, Optional
+from dataclasses import dataclass
+from typing import Any, Callable, Optional
 
-from homeassistant.components.sensor import SensorEntity, SensorDeviceClass, SensorStateClass
-from homeassistant.config_entries import ConfigEntry
-from homeassistant.const import UnitOfTemperature
-from homeassistant.core import HomeAssistant
-from homeassistant.helpers.entity import DeviceInfo
+from homeassistant.components.sensor import (
+    SensorEntity,
+    SensorEntityDescription,
+)
+from homeassistant.const import (
+    UnitOfTemperature,
+    UnitOfElectricPotential,
+    UnitOfElectricCurrent,
+    UnitOfTime,
+    SIGNAL_STRENGTH_DECIBELS_MILLIWATT,
+    PERCENTAGE,
+)
+from homeassistant.components.sensor.const import SensorDeviceClass
 from homeassistant.helpers.update_coordinator import CoordinatorEntity
-from homeassistant.helpers.device_registry import CONNECTION_NETWORK_MAC
+from homeassistant.core import HomeAssistant
+from homeassistant.helpers.entity_platform import AddEntitiesCallback
+from homeassistant.config_entries import ConfigEntry
 
-from .const import DOMAIN, COORDINATOR_NAME, CONF_DEVICE_INDEX, CONF_ASSUME_FAHRENHEIT
 from .coordinator import PoolSyncCoordinator
+from .const import DOMAIN
 
-_LOGGER = logging.getLogger(__name__)
 
-# path tuples relative to coordinator.data; ('devices', ...) means devices["<index>"] first
-SPECS = [
-    # Temperatures
-    (("devices","status","waterTemp"), "Pool Water Temperature", SensorDeviceClass.TEMPERATURE, UnitOfTemperature.CELSIUS, SensorStateClass.MEASUREMENT, True),
-    (("poolSync","status","boardTemp"), "Controller Board Temperature", SensorDeviceClass.TEMPERATURE, UnitOfTemperature.CELSIUS, SensorStateClass.MEASUREMENT, False),
+@dataclass(frozen=True)
+class PoolSyncSensorDesc(SensorEntityDescription):
+    """Extend SensorEntityDescription with a value extractor."""
+    value_fn: Callable[[dict[str, Any]], Any] | None = None
+    attr_fn: Callable[[dict[str, Any]], dict[str, Any]] | None = None
 
-    # Requested list (exact names/units)
-    (("devices","status","flowRate"), "Pool Salt Cell Flow Rate", None, "gal/min", SensorStateClass.MEASUREMENT, False),
-    (("devices","status","saltPPM"), "Pool Salt Cell PPM", None, "ppm", SensorStateClass.MEASUREMENT, False),
-    (("devices","config","chlorOutput"), "Pool Salt Cell Output", None, "%", SensorStateClass.MEASUREMENT, False),
-    (("devices","status","boostRemaining"), "Pool Salt Cell Output Boost", None, "min", SensorStateClass.MEASUREMENT, False),
 
-    # Diagnostics
-    (("poolSync","status","rssi"), "Controller RSSI", None, "dBm", SensorStateClass.MEASUREMENT, False),
-    (("devices","config","gallons"), "Pool Volume", None, "gal", SensorStateClass.MEASUREMENT, False),
-    (("devices","config","polarityChangeTime"), "Polarity Change Time", None, "h", SensorStateClass.MEASUREMENT, False),
-    (("devices","status","cellRailVoltage"), "Cell Rail Voltage", None, "mV", SensorStateClass.MEASUREMENT, False),
-    (("devices","status","cellRawSaltADC"), "Cell Raw Salt ADC", None, None, SensorStateClass.MEASUREMENT, False),
+def _g(d: dict, *path, default=None):
+    cur: Any = d
+    for p in path:
+        if not isinstance(cur, dict) or p not in cur:
+            return default
+        cur = cur[p]
+    return cur
 
-    # Online
-    (("devices","nodeAttr","online"), "Device Online", None, None, None, False),
+
+def _dev0(data: dict) -> dict:
+    return _g(data, "devices", "0", default={}) or {}
+
+
+# ---------- Value helpers / unit conversions ----------
+def _mv_to_v(mv: Any) -> Optional[float]:
+    try:
+        return round(float(mv) / 1000.0, 3)
+    except Exception:
+        return None
+
+
+def _ma_to_a(ma: Any) -> Optional[float]:
+    try:
+        return round(float(ma) / 1000.0, 3)
+    except Exception:
+        return None
+
+
+# ---------- Sensor map ----------
+SENSORS: list[PoolSyncSensorDesc] = [
+    # --- PoolSync hub stats/system ---
+    PoolSyncSensorDesc(
+        key="board_temp_c",
+        name="PoolSync Board Temperature",
+        device_class=SensorDeviceClass.TEMPERATURE,
+        native_unit_of_measurement=UnitOfTemperature.CELSIUS,
+        value_fn=lambda d: _g(d, "poolSync", "status", "boardTemp"),
+    ),
+    PoolSyncSensorDesc(
+        key="rssi_dbm",
+        name="PoolSync RSSI",
+        device_class=SensorDeviceClass.SIGNAL_STRENGTH,
+        native_unit_of_measurement=SIGNAL_STRENGTH_DECIBELS_MILLIWATT,
+        value_fn=lambda d: _g(d, "poolSync", "status", "rssi"),
+    ),
+    PoolSyncSensorDesc(
+        key="uptime_secs",
+        name="PoolSync Uptime",
+        device_class=SensorDeviceClass.DURATION,
+        native_unit_of_measurement=UnitOfTime.SECONDS,
+        value_fn=lambda d: _g(d, "poolSync", "stats", "upTimeSecs"),
+    ),
+    PoolSyncSensorDesc(
+        key="device_info",
+        name="PoolSync System Details",
+        value_fn=lambda d: _g(d, "poolSync", "config", "name"),
+        attr_fn=lambda d: {
+            "macAddr": _g(d, "poolSync", "system", "macAddr"),
+            "bssid": _g(d, "poolSync", "system", "bssid"),
+            "fwVersion": _g(d, "poolSync", "system", "fwVersion"),
+            "hwVersion": _g(d, "poolSync", "system", "hwVersion"),
+        },
+    ),
+    PoolSyncSensorDesc(
+        key="status_info",
+        name="PoolSync Status",
+        value_fn=lambda d: "online" if _g(d, "poolSync", "status", "online") else "offline",
+        attr_fn=lambda d: {
+            "online": _g(d, "poolSync", "status", "online"),
+            "flags": _g(d, "poolSync", "status", "flags"),
+            "dateTime": _g(d, "poolSync", "status", "dateTime"),
+        },
+    ),
+    PoolSyncSensorDesc(
+        key="diagnostics",
+        name="PoolSync Diagnostics",
+        value_fn=lambda d: "diagnostics",
+        attr_fn=lambda d: {
+            "wifiDisconnects": _g(d, "poolSync", "stats", "wifiDisconnects"),
+            "awsDisconnects": _g(d, "poolSync", "stats", "awsDisconnects"),
+            "minRssi": _g(d, "poolSync", "stats", "minRssi"),
+            "maxRssi": _g(d, "poolSync", "stats", "maxRssi"),
+            "minBoardTemp": _g(d, "poolSync", "stats", "minBoardTemp"),
+            "maxBoardTemp": _g(d, "poolSync", "stats", "maxBoardTemp"),
+            "systemRestarts": _g(d, "poolSync", "stats", "systemRestarts"),
+            "numDeviceMsgNoResp": _g(d, "poolSync", "stats", "numDeviceMsgNoResp"),
+        },
+    ),
+
+    # --- Device 0: ChlorSync status / config ---
+    PoolSyncSensorDesc(
+        key="water_temp_c",
+        name="Pool Water Temperature",
+        device_class=SensorDeviceClass.TEMPERATURE,
+        native_unit_of_measurement=UnitOfTemperature.CELSIUS,
+        value_fn=lambda d: _g(_dev0(d), "status", "waterTemp"),
+    ),
+    PoolSyncSensorDesc(
+        key="flow_rate_gpm",
+        name="Salt Cell Flow Rate",
+        native_unit_of_measurement="gal/min",
+        value_fn=lambda d: _g(_dev0(d), "status", "flowRate"),
+    ),
+    PoolSyncSensorDesc(
+        key="salt_ppm",
+        name="Salt PPM",
+        native_unit_of_measurement="ppm",
+        value_fn=lambda d: _g(_dev0(d), "status", "saltPPM"),
+    ),
+    PoolSyncSensorDesc(
+        key="chlor_output_pct",
+        name="Chlor Output",
+        native_unit_of_measurement=PERCENTAGE,
+        value_fn=lambda d: _g(_dev0(d), "config", "chlorOutput"),
+    ),
+    PoolSyncSensorDesc(
+        key="boost_remaining_min",
+        name="Chlor Boost Remaining",
+        device_class=SensorDeviceClass.DURATION,
+        native_unit_of_measurement=UnitOfTime.MINUTES,
+        value_fn=lambda d: _g(_dev0(d), "status", "boostRemaining"),
+    ),
+    PoolSyncSensorDesc(
+        key="raw_salt_adc",
+        name="Cell Raw Salt ADC",
+        value_fn=lambda d: _g(_dev0(d), "status", "cellRawSaltADC"),
+    ),
+    PoolSyncSensorDesc(
+        key="cell_rail_voltage_v",
+        name="Cell Rail Voltage",
+        device_class=SensorDeviceClass.VOLTAGE,
+        native_unit_of_measurement=UnitOfElectricPotential.VOLT,
+        value_fn=lambda d: _mv_to_v(_g(_dev0(d), "status", "cellRailVoltage")),
+    ),
+    PoolSyncSensorDesc(
+        key="fwd_current_a",
+        name="Cell Forward Current",
+        device_class=SensorDeviceClass.CURRENT,
+        native_unit_of_measurement=UnitOfElectricCurrent.AMPERE,
+        value_fn=lambda d: _ma_to_a(_g(_dev0(d), "status", "fwdCurrent")),
+    ),
+    PoolSyncSensorDesc(
+        key="rev_current_a",
+        name="Cell Reverse Current",
+        device_class=SensorDeviceClass.CURRENT,
+        native_unit_of_measurement=UnitOfElectricCurrent.AMPERE,
+        value_fn=lambda d: _ma_to_a(_g(_dev0(d), "status", "revCurrent")),
+    ),
+    PoolSyncSensorDesc(
+        key="out_voltage_v",
+        name="Cell Output Voltage",
+        device_class=SensorDeviceClass.VOLTAGE,
+        native_unit_of_measurement=UnitOfElectricPotential.VOLT,
+        value_fn=lambda d: _mv_to_v(_g(_dev0(d), "status", "outVoltage")),
+    ),
+    PoolSyncSensorDesc(
+        key="device_config",
+        name="ChlorSync Config",
+        value_fn=lambda d: _g(_dev0(d), "nodeAttr", "name") or "ChlorSync",
+        attr_fn=lambda d: {
+            "poolCoverCtrl": _g(_dev0(d), "config", "poolCoverCtrl"),
+            "gallons": _g(_dev0(d), "config", "gallons"),
+            "polarityChangeTime": _g(_dev0(d), "config", "polarityChangeTime"),
+            "userSaltCalib": _g(_dev0(d), "config", "userSaltCalib"),
+        },
+    ),
+    PoolSyncSensorDesc(
+        key="cell_system",
+        name="Cell System",
+        value_fn=lambda d: _g(_dev0(d), "nodeAttr", "name") or "ChlorSync",
+        attr_fn=lambda d: {
+            "drvFwVersion": _g(_dev0(d), "system", "drvFwVersion"),
+            "cellFwVersion": _g(_dev0(d), "system", "cellFwVersion"),
+            "cellHwVersion": _g(_dev0(d), "system", "cellHwVersion"),
+            "cellCalib": _g(_dev0(d), "system", "cellCalib"),
+            "numBlades": _g(_dev0(d), "system", "numBlades"),
+            "cellSerialNum": _g(_dev0(d), "system", "cellSerialNum"),
+        },
+    ),
+    PoolSyncSensorDesc(
+        key="cell_faults",
+        name="Cell Faults",
+        value_fn=lambda d: (_g(_dev0(d), "faults") or [0])[0],
+    ),
+    PoolSyncSensorDesc(
+        key="device_stats",
+        name="ChlorSync Stats",
+        value_fn=lambda d: "stats",
+        attr_fn=lambda d: {
+            "stat0": _g(_dev0(d), "stats", 0),
+            "stat1": _g(_dev0(d), "stats", 1),
+            "stat2": _g(_dev0(d), "stats", 2),
+            "stat3": _g(_dev0(d), "stats", 3),
+            "stat4": _g(_dev0(d), "stats", 4),
+            "stat5": _g(_dev0(d), "stats", 5),
+            "stat6": _g(_dev0(d), "stats", 6),
+            "stat7": _g(_dev0(d), "stats", 7),
+            "stat8": _g(_dev0(d), "stats", 8),
+            "stat9": _g(_dev0(d), "stats", 9),
+        },
+    ),
 ]
 
-async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry, async_add_entities):
-    data = hass.data[DOMAIN][entry.entry_id]
-    coordinator: PoolSyncCoordinator = data[COORDINATOR_NAME]
-    device_index = entry.data.get(CONF_DEVICE_INDEX, "0")
-    assume_f = entry.data.get(CONF_ASSUME_FAHRENHEIT, False)
-
-    ents: list[SensorEntity] = []
-    for path, name, dclass, unit, sclass, is_temp in SPECS:
-        ents.append(PoolSyncSensor(coordinator, entry, device_index, name, path, dclass, unit, sclass, is_temp, assume_f))
-
-    # Attribute sensors
-    ents.append(PoolSyncAttrSensor(
-        coordinator, entry,
-        name="Pool Salt Cell System Details",
-        unique_key="cell_system_details",
-        state_path=("devices", str(device_index), "nodeAttr", "name"),
-        attrs_path=("devices", str(device_index), "system"),
-        attrs_keys=["drvFwVersion","cellFwVersion","cellHwVersion","cellCalib","numBlades","cellSerialNum"],
-    ))
-    ents.append(PoolSyncAttrSensor(
-        coordinator, entry,
-        name="PoolSync System Details",
-        unique_key="poolsync_system_details",
-        state_path=("poolSync", "config", "name"),
-        attrs_path=("poolSync", "system"),
-        attrs_keys=["macAddr","bssid","fwVersion","hwVersion"],
-    ))
-    ents.append(PoolSyncAttrSensor(
-        coordinator, entry,
-        name="PoolSync System Status",
-        unique_key="poolsync_system_status",
-        state_path=("poolSync", "status", "online"),
-        attrs_path=("poolSync", "status"),
-        attrs_keys=["online","rssi","boardTemp"],
-    ))
-
-    async_add_entities(ents, True)
 
 class PoolSyncSensor(CoordinatorEntity[PoolSyncCoordinator], SensorEntity):
-    def __init__(self, coordinator, entry, device_index, name, path, dclass, unit, sclass, is_temp, assume_f) -> None:
+    """Generic PoolSync sensor wired to the coordinator."""
+
+    entity_description: PoolSyncSensorDesc
+
+    def __init__(self, coordinator: PoolSyncCoordinator, description: PoolSyncSensorDesc) -> None:
         super().__init__(coordinator)
-        self._entry = entry
-        self._device_index = str(device_index)
-        self._name = name
-        self._path = path
-        self._attr_name = name
-        self._attr_unique_id = f"{entry.entry_id}_{'_'.join(path)}"
-        self._attr_device_class = dclass
-        self._attr_native_unit_of_measurement = unit
-        self._attr_state_class = sclass
-        self._is_temp = is_temp
-        self._assume_f = assume_f
+        self.entity_description = description
+
+        mac = coordinator.api.mac_address or coordinator.config_entry.data.get("mac") or "poolsync"
+        self._attr_unique_id = f"{mac}_{description.key}"
+        self._attr_has_entity_name = True
+        self._attr_name = description.name
+        self._attr_native_value = None
+
+        # Device info groups all sensors under the PoolSync device
+        self._attr_device_info = {
+            "identifiers": {(DOMAIN, mac)},
+            "manufacturer": "AquaCal",
+            "name": "PoolSync",
+            "sw_version": str(_g(self.coordinator.data or {}, "poolSync", "system", "fwVersion")),
+            "model": "PoolSync",
+        }
 
     @property
-    def device_info(self) -> DeviceInfo:
+    def native_value(self) -> Any:
         data = self.coordinator.data or {}
-        sys = ((data.get("poolSync") or {}).get("system") or {})
-        mac = sys.get("macAddr")
-        return DeviceInfo(
-            identifiers={(DOMAIN, self._entry.entry_id)},
-            manufacturer="PoolSync",
-            name="PoolSync Bridge",
-            sw_version=str(sys.get("fwVersion", "")),
-            model=str(sys.get("hwVersion", "")),
-            connections={(CONNECTION_NETWORK_MAC, mac)} if mac else None,
-        )
+        if self.entity_description.value_fn:
+            try:
+                return self.entity_description.value_fn(data)
+            except Exception:
+                return None
+        return None
 
-    def _walk(self) -> Optional[Any]:
+    @property
+    def extra_state_attributes(self) -> Optional[dict[str, Any]]:
         data = self.coordinator.data or {}
-        node: Any = data
-        if self._path and self._path[0] == "devices":
-            devices = data.get("devices")
-            if not isinstance(devices, dict):
+        if self.entity_description.attr_fn:
+            try:
+                return self.entity_description.attr_fn(data)
+            except Exception:
                 return None
-            node = devices.get(str(self._device_index))
-            if not isinstance(node, dict):
-                return None
-            keys = self._path[1:]
-        else:
-            keys = self._path
+        return None
 
-        for k in keys:
-            if not isinstance(node, dict):
-                return None
-            node = node.get(k)
-        return node
 
-    @property
-    def native_value(self) -> Optional[Any]:
-        val = self._walk()
-        if val is None:
-            return None
-        if self._is_temp and isinstance(val, (int, float)):
-            if self._assume_f or val > 45:  # looks like °F
-                return round((val - 32) * 5.0 / 9.0, 1)
-            return round(float(val), 1)
-        return val
+async def async_setup_entry(
+    hass: HomeAssistant, entry: ConfigEntry, async_add_entities: AddEntitiesCallback
+) -> None:
+    coordinator: PoolSyncCoordinator = hass.data[DOMAIN][entry.entry_id]["coordinator"]
 
-    @property
-    def available(self) -> bool:
-        return super().available and (self._walk() is not None)
+    entities: list[PoolSyncSensor] = [PoolSyncSensor(coordinator, desc) for desc in SENSORS]
+    async_add_entities(entities, update_before_add=True)
 
-class PoolSyncAttrSensor(CoordinatorEntity[PoolSyncCoordinator], SensorEntity):
-    _attr_icon = "mdi:information-outline"
-    _attr_has_entity_name = True
-
-    def __init__(self, coordinator, entry, name, unique_key, state_path, attrs_path, attrs_keys):
-        super().__init__(coordinator)
-        self._entry = entry
-        self._name = name
-        self._state_path = state_path
-        self._attrs_path = attrs_path
-        self._attrs_keys = attrs_keys or []
-        self._attr_name = name
-        self._attr_unique_id = f"{entry.entry_id}_{unique_key}"
-
-    def _get_path(self, path):
-        data = self.coordinator.data or {}
-        node = data
-        for k in path:
-            if not isinstance(node, dict):
-                return None
-            node = node.get(k)
-        return node
-
-    @property
-    def native_value(self):
-        if not self._state_path:
-            return "OK"
-        val = self._get_path(self._state_path)
-        if isinstance(val, bool):
-            return "Online" if val else "Offline"
-        return val if val is not None else "Unknown"
-
-    @property
-    def extra_state_attributes(self):
-        base = self._get_path(self._attrs_path)
-        if not isinstance(base, dict):
-            return None
-        out = {}
-        for k in self._attrs_keys:
-            out[k] = base.get(k)
-        return out

@@ -1,19 +1,20 @@
 {
+  "title": "PoolSync",
   "config": {
     "step": {
       "user": {
-        "title": "PoolSync",
-        "description": "Connect to your PoolSync bridge.",
+        "title": "Connect to PoolSync",
+        "description": "Enter the device address. If you have a known User ID (UUID), include it to improve push-link success.",
         "data": {
-          "base_url": "Base URL (e.g. http://172.16.42.218)",
-          "authorization": "Authorization header value",
-          "user_token": "User token header value",
-          "device_index": "Device index (usually 0)",
-          "scan_interval": "Scan interval (seconds)",
-          "timeout": "HTTP timeout (seconds)",
-          "assume_fahrenheit": "Assume waterTemp is \u00b0F (convert to \u00b0C)"
+          "base_url": "Base URL (e.g., http://172.16.42.218)",
+          "user_id": "User ID (optional)",
+          "poll_seconds": "Polling interval (seconds)",
+          "request_timeout": "Request timeout (seconds)"
         }
       }
+    },
+    "error": {
+      "pushlink_failed": "Could not obtain password via push-link. Try again."
     }
   }
 }
