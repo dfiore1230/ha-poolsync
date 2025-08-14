@@ -1,7 +1,7 @@
 {
   "domain": "poolsync",
   "name": "PoolSync",
-  "version": "0.1.1",
+  "version": "0.4.2",
   "config_flow": true,
   "documentation": "https://github.com/dfiore1230/ha-poolsync",
   "issue_tracker": "https://github.com/dfiore1230/ha-poolsync/issues",
