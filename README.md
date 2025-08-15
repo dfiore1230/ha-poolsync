@@ -17,6 +17,7 @@ Local-polling integration for the PoolSync bridge.
 - Sensors: Water Temp, Board Temp, Flow Rate, Salt PPM, Chlor Output, Boost Remaining, RSSI, Volume, Polarity Change, Cell Rail Voltage, Cell Raw Salt ADC, Online
 - Number: Chlor Output (0–100%)
 - Switch: Salt Boost (24h) via `boostMode`
+- Experimental heat pump support (sensors and setpoint/mode control)
 
 ### Push-link onboarding
 

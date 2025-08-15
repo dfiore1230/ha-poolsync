@@ -23,7 +23,7 @@ from .coordinator import PoolSyncCoordinator
 
 _LOGGER = logging.getLogger(__name__)
 
-PLATFORMS: list[str] = ["sensor", "switch", "number"]
+PLATFORMS: list[str] = ["sensor", "switch", "number", "binary_sensor"]
 
 async def async_setup(hass: HomeAssistant, config: ConfigType) -> bool:
     return True
