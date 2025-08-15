@@ -186,7 +186,7 @@ class PoolSyncApi:
             return False, None, None, used_user, f"pushLink start failed: status={st}, body={text}"
 
         # 2) Poll
-        loop = asyncio.get_event_loop()
+        loop = asyncio.get_running_loop()
         deadline = loop.time() + timeout
         poll = 0
 

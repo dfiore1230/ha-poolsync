@@ -23,6 +23,7 @@ from homeassistant.config_entries import ConfigEntry
 
 from .coordinator import PoolSyncCoordinator
 from .const import DOMAIN
+from .util import _g
 
 
 @dataclass(frozen=True)
@@ -30,27 +31,6 @@ class PoolSyncSensorDesc(SensorEntityDescription):
     """Extend SensorEntityDescription with a value extractor."""
     value_fn: Callable[[dict[str, Any]], Any] | None = None
     attr_fn: Callable[[dict[str, Any]], dict[str, Any]] | None = None
-
-
-def _g(d: dict, *path, default=None):
-    cur: Any = d
-    for p in path:
-        if isinstance(cur, dict):
-            if p not in cur:
-                return default
-            cur = cur[p]
-            continue
-        if isinstance(cur, list):
-            try:
-                idx = int(p)
-            except (TypeError, ValueError):
-                return default
-            if idx < 0 or idx >= len(cur):
-                return default
-            cur = cur[idx]
-            continue
-        return default
-    return cur
 
 
 def _dev0(data: dict) -> dict:
