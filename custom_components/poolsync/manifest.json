@@ -1,7 +1,7 @@
 {
   "domain": "poolsync",
   "name": "PoolSync",
-  "version": "0.4.4",
+  "version": "0.4.5",
   "iot_class": "local_polling",
   "codeowners": [
     "@dfiore1230"

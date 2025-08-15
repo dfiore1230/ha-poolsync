@@ -30,5 +30,5 @@ After setup, use **Options** on the integration to adjust the **poll interval** 
 | Version | Highlights |
 |---------|------------|
 | 0.4.4 | Current sensors, number & switch entities, config flow, etc. |
-| 0.4.5 (upcoming) | MAC fallback, poll-link validation, masked logging, coordinator error handling, dynamic device index, list-aware helper, get_running_loop, test fixes, manifest/translation newlines. |
+| 0.4.5 | MAC fallback, poll-link validation, masked logging, coordinator error handling, dynamic device index, list-aware helper, get_running_loop, test fixes, manifest/translation newlines. |
 
