@@ -19,7 +19,7 @@ async def async_setup_entry(
     coordinator: PoolSyncCoordinator = hass.data[DOMAIN][entry.entry_id]["coordinator"]
 
     entities: list[NumberEntity] = [
-        PoolSyncChlorOutputNumber(coordinator, device_index=0),
+        PoolSyncChlorOutputNumber(coordinator, entry, device_index=0),
     ]
     async_add_entities(entities, update_before_add=True)
 
@@ -33,10 +33,12 @@ class PoolSyncChlorOutputNumber(CoordinatorEntity[PoolSyncCoordinator], NumberEn
     _attr_mode = NumberMode.SLIDER
     _attr_native_unit_of_measurement = PERCENTAGE
 
-    def __init__(self, coordinator: PoolSyncCoordinator, device_index: int = 0) -> None:
+    def __init__(
+        self, coordinator: PoolSyncCoordinator, entry: ConfigEntry, device_index: int = 0
+    ) -> None:
         super().__init__(coordinator)
         self._device_index = device_index
-        mac = coordinator.api.mac_address or "poolsync"
+        mac = coordinator.api.mac_address or entry.data.get("mac") or "poolsync"
         self._attr_unique_id = f"{mac}_chlor_output_{device_index}"
         self._attr_name = "Chlor Output"
 
