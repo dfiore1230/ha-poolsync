@@ -126,6 +126,14 @@ class PoolSyncApi:
         """PATCH /api/poolsync?cmd=devices&device=<index> with {'boostMode': bool}."""
         return await self._patch_devices(device_index, {"boostMode": bool(on)})
 
+    async def set_heatpump_setpoint(self, device_index: int, value: float) -> Dict[str, Any]:
+        """PATCH device setpoint for heat pump."""
+        return await self._patch_devices(device_index, {"setpoint": value})
+
+    async def set_heatpump_mode(self, device_index: int, mode: int) -> Dict[str, Any]:
+        """PATCH device mode for heat pump."""
+        return await self._patch_devices(device_index, {"mode": int(mode)})
+
     async def _patch_devices(self, device_index: int, payload: Dict[str, Any]) -> Dict[str, Any]:
         headers = {"Content-Type": "application/json"}
         status, text, data = await self._request_json(

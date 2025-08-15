@@ -286,5 +286,46 @@ async def async_setup_entry(
     entities: list[PoolSyncSensor] = [
         PoolSyncSensor(coordinator, entry, desc) for desc in SENSORS
     ]
+
+    data = coordinator.data or {}
+    device_types = _g(data, "deviceType", default={}) or {}
+    heatpump_idx = next(
+        (idx for idx, dev in device_types.items() if dev == "heatPump"),
+        None,
+    )
+
+    if heatpump_idx is not None:
+        hp_idx = str(heatpump_idx)
+        hp_sensors = [
+            PoolSyncSensorDesc(
+                key="hp_water_temp_c",
+                name="Heat Pump Water Temperature",
+                device_class=SensorDeviceClass.TEMPERATURE,
+                native_unit_of_measurement=UnitOfTemperature.CELSIUS,
+                value_fn=lambda d, i=hp_idx: _g(d, "devices", i, "status", "waterTemp"),
+            ),
+            PoolSyncSensorDesc(
+                key="hp_air_temp_c",
+                name="Heat Pump Air Temperature",
+                device_class=SensorDeviceClass.TEMPERATURE,
+                native_unit_of_measurement=UnitOfTemperature.CELSIUS,
+                value_fn=lambda d, i=hp_idx: _g(d, "devices", i, "status", "airTemp"),
+            ),
+            PoolSyncSensorDesc(
+                key="hp_mode",
+                name="Heat Pump Mode",
+                value_fn=lambda d, i=hp_idx: _g(d, "devices", i, "config", "mode"),
+            ),
+            PoolSyncSensorDesc(
+                key="hp_setpoint_temp_c",
+                name="Heat Pump SetPoint Temperature",
+                device_class=SensorDeviceClass.TEMPERATURE,
+                native_unit_of_measurement=UnitOfTemperature.CELSIUS,
+                value_fn=lambda d, i=hp_idx: _g(d, "devices", i, "config", "setpoint"),
+            ),
+        ]
+        for desc in hp_sensors:
+            entities.append(PoolSyncSensor(coordinator, entry, desc))
+
     async_add_entities(entities, update_before_add=True)
 
