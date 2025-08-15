@@ -68,7 +68,7 @@ class PoolSyncConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
         )
         if not ok or not token:
             _LOGGER.debug("Link mode failed: %s", err or "unknown error")
-            return self.async_abort(reason="cannot_connect")
+            return self.async_abort(reason="pushlink_failed")
 
         # Create the entry and persist the token + the SAME ephemeral user used
         title = f"PoolSync ({mac})" if mac else "PoolSync"
