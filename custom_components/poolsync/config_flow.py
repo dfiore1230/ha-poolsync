@@ -26,8 +26,12 @@ STEP_USER_SCHEMA = vol.Schema(
     {
         vol.Required("base_url"): str,
         # No user_id requested up front; we auto-generate an ephemeral one for push-link
-        vol.Optional("poll_interval", default=0.5): float,
-        vol.Optional("timeout", default=60): int,
+        vol.Optional("poll_interval", default=0.5): vol.All(
+            vol.Coerce(float), vol.Range(min=0.1)
+        ),
+        vol.Optional("timeout", default=60): vol.All(
+            vol.Coerce(int), vol.Range(min=1)
+        ),
     }
 )
 
@@ -42,8 +46,8 @@ class PoolSyncConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
             return self.async_show_form(step_id="user", data_schema=STEP_USER_SCHEMA)
 
         base_url: str = user_input["base_url"].strip().rstrip("/")
-        poll_interval: float = float(user_input.get("poll_interval", 0.5))
-        timeout: float = float(user_input.get("timeout", 60))
+        poll_interval: float = user_input["poll_interval"]
+        timeout: int = user_input["timeout"]
 
         # Create a temporary API client (no token, no user)
         session = async_get_clientsession(self.hass)
@@ -58,7 +62,7 @@ class PoolSyncConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
 
         _LOGGER.debug(
             "Starting push-link (base_url=%s, user=None, poll=%.1fs, timeout=%ds)",
-            base_url, poll_interval, int(timeout),
+            base_url, poll_interval, timeout,
         )
 
         ok, mac, token, used_user, err = await api.async_pushlink_exchange(
