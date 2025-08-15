@@ -241,11 +241,16 @@ class PoolSyncSensor(CoordinatorEntity[PoolSyncCoordinator], SensorEntity):
 
     entity_description: PoolSyncSensorDesc
 
-    def __init__(self, coordinator: PoolSyncCoordinator, description: PoolSyncSensorDesc) -> None:
+    def __init__(
+        self,
+        coordinator: PoolSyncCoordinator,
+        entry: ConfigEntry,
+        description: PoolSyncSensorDesc,
+    ) -> None:
         super().__init__(coordinator)
         self.entity_description = description
 
-        mac = coordinator.api.mac_address or coordinator.config_entry.data.get("mac") or "poolsync"
+        mac = coordinator.api.mac_address or entry.data.get("mac") or "poolsync"
         self._attr_unique_id = f"{mac}_{description.key}"
         self._attr_has_entity_name = True
         self._attr_name = description.name
@@ -286,6 +291,8 @@ async def async_setup_entry(
 ) -> None:
     coordinator: PoolSyncCoordinator = hass.data[DOMAIN][entry.entry_id]["coordinator"]
 
-    entities: list[PoolSyncSensor] = [PoolSyncSensor(coordinator, desc) for desc in SENSORS]
+    entities: list[PoolSyncSensor] = [
+        PoolSyncSensor(coordinator, entry, desc) for desc in SENSORS
+    ]
     async_add_entities(entities, update_before_add=True)
 
