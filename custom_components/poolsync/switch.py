@@ -19,7 +19,7 @@ async def async_setup_entry(
 
     # For now we only know about device index 0 (chlorSync)
     entities: list[SwitchEntity] = [
-        PoolSyncBoostSwitch(coordinator, device_index=0),
+        PoolSyncBoostSwitch(coordinator, entry, device_index=0),
     ]
     async_add_entities(entities, update_before_add=True)
 
@@ -27,10 +27,12 @@ async def async_setup_entry(
 class PoolSyncBoostSwitch(CoordinatorEntity[PoolSyncCoordinator], SwitchEntity):
     """24h Salt Boost toggle for ChlorSync."""
 
-    def __init__(self, coordinator: PoolSyncCoordinator, device_index: int = 0) -> None:
+    def __init__(
+        self, coordinator: PoolSyncCoordinator, entry: ConfigEntry, device_index: int = 0
+    ) -> None:
         super().__init__(coordinator)
         self._device_index = device_index
-        mac = coordinator.api.mac_address or "poolsync"
+        mac = coordinator.api.mac_address or entry.data.get("mac") or "poolsync"
         self._attr_unique_id = f"{mac}_boost_{device_index}"
         self._attr_name = "Salt Boost (24h)"
         self._attr_icon = "mdi:rocket-launch"
