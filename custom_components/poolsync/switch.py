@@ -54,7 +54,14 @@ class PoolSyncBoostSwitch(CoordinatorEntity[PoolSyncCoordinator], SwitchEntity):
     def is_on(self) -> bool:
         data = self.coordinator.data or {}
         # No explicit boolean in sample JSON; infer from boostRemaining minutes > 0
-        remaining = _g(data, "devices", "0", "status", "boostRemaining", default=0)
+        remaining = _g(
+            data,
+            "devices",
+            str(self._device_index),
+            "status",
+            "boostRemaining",
+            default=0,
+        )
         try:
             return int(remaining) > 0
         except Exception:
