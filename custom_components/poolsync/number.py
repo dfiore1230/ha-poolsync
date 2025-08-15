@@ -58,7 +58,7 @@ class PoolSyncChlorOutputNumber(CoordinatorEntity[PoolSyncCoordinator], NumberEn
     @property
     def native_value(self) -> float | None:
         data = self.coordinator.data or {}
-        val = _g(data, "devices", "0", "config", "chlorOutput")
+        val = _g(data, "devices", str(self._device_index), "config", "chlorOutput")
         try:
             return float(val)
         except Exception:
