@@ -4,6 +4,7 @@ from __future__ import annotations
 import asyncio
 import json
 import logging
+import os
 import uuid
 from typing import Any, Dict, Optional, Tuple
 
@@ -14,6 +15,7 @@ from homeassistant.core import HomeAssistant
 from homeassistant.helpers.aiohttp_client import async_get_clientsession
 
 _LOGGER = logging.getLogger(__name__)
+UNMASK_LOGS = bool(int(os.environ.get("POOLSYNC_UNMASK_LOGS", "0")))
 
 
 class PoolSyncApi:
@@ -155,6 +157,7 @@ class PoolSyncApi:
         Returns: (ok, mac, token, used_user, err)
         """
         base_path = "/api/poolsync"
+        debug_full = _LOGGER.isEnabledFor(logging.DEBUG) and UNMASK_LOGS
 
         # If no user provided, generate one just for this run
         used_user = user_id or str(uuid.uuid4())
@@ -204,8 +207,22 @@ class PoolSyncApi:
                 timeout_total=self._default_timeout,
             )
 
-            # Log the full raw response every poll
-            _LOGGER.debug("push-link poll #%d RAW: %s", poll, text)
+            if debug_full:
+                _LOGGER.debug("push-link poll #%d RAW: %s", poll, text)
+            else:
+                # Log response details without exposing tokens/passwords
+                redacted = None
+                if isinstance(data, dict):
+                    redacted = {
+                        k: ("<redacted>" if k.lower() in {"password", "pass", "token"} else v)
+                        for k, v in data.items()
+                    }
+                _LOGGER.debug(
+                    "push-link poll #%d: status=%s body=%s",
+                    poll,
+                    st,
+                    redacted if redacted is not None else f"<non-json len={len(text)}>",
+                )
 
             if st == 200 and isinstance(data, dict):
                 mac = data.get("macAddress") or data.get("mac")
@@ -217,11 +234,18 @@ class PoolSyncApi:
                     # Also set on this instance so immediate calls work (config flow still stores it)
                     self.user_id = used_user
                     self.token = pw
-                    _LOGGER.debug(
-                        "push-link SUCCESS: mac=%s password(len=%d)",
-                        self.mac_address or "?",
-                        len(pw),
-                    )
+                    if debug_full:
+                        _LOGGER.debug(
+                            "push-link SUCCESS: mac=%s password=%s",
+                            self.mac_address or "?",
+                            pw,
+                        )
+                    else:
+                        _LOGGER.debug(
+                            "push-link SUCCESS: mac=%s password_len=%d",
+                            self.mac_address or "?",
+                            len(pw),
+                        )
                     return True, mac, pw, used_user, None
 
                 if isinstance(rem, int) and rem <= 0:
