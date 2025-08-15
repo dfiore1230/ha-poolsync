@@ -7,11 +7,17 @@ from typing import Any, Dict, Optional
 import voluptuous as vol
 
 from homeassistant import config_entries
-from homeassistant.core import HomeAssistant
+from homeassistant.core import HomeAssistant, callback
 from homeassistant.data_entry_flow import FlowResult
 from homeassistant.helpers.aiohttp_client import async_get_clientsession
 
 from .api import PoolSyncApi
+from .const import (
+    CONF_POLL_SECONDS,
+    CONF_REQUEST_TIMEOUT,
+    DEFAULT_POLL_SECONDS,
+    DEFAULT_REQUEST_TIMEOUT,
+)
 
 DOMAIN = "poolsync"
 _LOGGER = logging.getLogger(__name__)
@@ -80,4 +86,56 @@ class PoolSyncConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
         self._abort_if_unique_id_configured()
 
         return self.async_create_entry(title=title, data=data)
+
+    @staticmethod
+    @callback
+    def async_get_options_flow(
+        config_entry: config_entries.ConfigEntry,
+    ) -> "PoolSyncOptionsFlow":
+        """Return the options flow for this handler."""
+        return PoolSyncOptionsFlow(config_entry)
+
+
+class PoolSyncOptionsFlow(config_entries.OptionsFlow):
+    """Handle PoolSync options."""
+
+    def __init__(self, config_entry: config_entries.ConfigEntry) -> None:
+        """Initialize PoolSync options flow."""
+        self.config_entry = config_entry
+
+    async def async_step_init(
+        self, user_input: Optional[Dict[str, Any]] = None
+    ) -> FlowResult:
+        """Manage PoolSync options."""
+        if user_input is not None:
+            return self.async_create_entry(title="", data=user_input)
+
+        return self.async_show_form(
+            step_id="init",
+            data_schema=vol.Schema(
+                {
+                    vol.Required(
+                        CONF_POLL_SECONDS,
+                        default=self.config_entry.options.get(
+                            CONF_POLL_SECONDS,
+                            self.config_entry.data.get(
+                                CONF_POLL_SECONDS, DEFAULT_POLL_SECONDS
+                            ),
+                        ),
+                    ): int,
+                    vol.Required(
+                        CONF_REQUEST_TIMEOUT,
+                        default=self.config_entry.options.get(
+                            CONF_REQUEST_TIMEOUT,
+                            self.config_entry.data.get(
+                                CONF_REQUEST_TIMEOUT,
+                                DEFAULT_REQUEST_TIMEOUT,
+                            ),
+                        ),
+                    ): int,
+                }
+            ),
+        )
+
+
 

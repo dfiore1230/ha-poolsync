@@ -31,7 +31,8 @@ async def async_setup(hass: HomeAssistant, config: ConfigType) -> bool:
 async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
     hass.data.setdefault(DOMAIN, {})
 
-    data = dict(entry.data)
+    # Merge data and options for runtime values
+    data = {**entry.data, **entry.options}
 
     # Normalize / defaults
     poll_seconds = int(data.get(CONF_POLL_SECONDS, DEFAULT_POLL_SECONDS))
@@ -63,6 +64,9 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
         poll_seconds,
         request_timeout,
     )
+
+    entry.async_on_unload(entry.add_update_listener(_async_update_listener))
+
     return True
 
 async def async_unload_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
@@ -70,3 +74,8 @@ async def async_unload_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
     if unload_ok:
         hass.data[DOMAIN].pop(entry.entry_id, None)
     return unload_ok
+
+
+async def _async_update_listener(hass: HomeAssistant, entry: ConfigEntry) -> None:
+    """Handle options update."""
+    await hass.config_entries.async_reload(entry.entry_id)
