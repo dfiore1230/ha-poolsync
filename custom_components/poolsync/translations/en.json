@@ -4,12 +4,11 @@
     "step": {
       "user": {
         "title": "Connect to PoolSync",
-        "description": "Enter the device address. If you have a known User ID (UUID), include it to improve push-link success.",
+        "description": "Enter the device base URL and adjust polling interval or timeout if needed.",
         "data": {
           "base_url": "Base URL (e.g., http://172.16.42.218)",
-          "user_id": "User ID (optional)",
-          "poll_seconds": "Polling interval (seconds)",
-          "request_timeout": "Request timeout (seconds)"
+          "poll_interval": "Polling interval (seconds)",
+          "timeout": "Push-link timeout (seconds)"
         }
       }
     },
