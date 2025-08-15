@@ -18,6 +18,16 @@ Local-polling integration for the PoolSync bridge.
 - Number: Chlor Output (0–100%)
 - Switch: Salt Boost (24h) via `boostMode`
 
+### Push-link onboarding
+
+During configuration the integration uses PoolSync's push-link mechanism to obtain an API password without any credentials. It works by:
+
+1. Generating a temporary user identifier.
+2. Sending `PUT /api/poolsync?cmd=pushLink&start` to open a short authorization window.
+3. Polling `GET /api/poolsync?cmd=pushLink&status` every 0.5 s using that user header.
+4. When you press the LINK button on the PoolSync within the timeout window (default 60 s), the device replies with `macAddress` and `password`.
+5. The integration stores the password as the token together with the generated user and uses them for all further requests. If no password is received before the window closes, onboarding aborts.
+
 ## Manual Install
 Copy `custom_components/poolsync/` into `<config>/custom_components/` and restart HA.
 
