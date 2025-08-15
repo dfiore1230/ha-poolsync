@@ -1,6 +1,7 @@
 import os
 import sys
 import types
+from dataclasses import dataclass
 
 # Ensure repository root on path
 sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), "..")))
@@ -64,8 +65,6 @@ class Dummy:
 
 class SensorEntity:
     pass
-
-from dataclasses import dataclass
 
 @dataclass(frozen=True)
 class SensorEntityDescription:
