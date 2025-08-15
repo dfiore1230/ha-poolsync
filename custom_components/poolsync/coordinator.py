@@ -6,7 +6,7 @@ from datetime import timedelta
 from typing import Any, Dict
 
 from homeassistant.core import HomeAssistant
-from homeassistant.helpers.update_coordinator import DataUpdateCoordinator
+from homeassistant.helpers.update_coordinator import DataUpdateCoordinator, UpdateFailed
 
 from .api import PoolSyncApi
 
@@ -18,5 +18,8 @@ class PoolSyncCoordinator(DataUpdateCoordinator[Dict[str, Any]]):
         self.api = api
 
     async def _async_update_data(self) -> Dict[str, Any]:
-        data = await self.api.get_poolsync_all()
-        return data
+        try:
+            data = await self.api.get_poolsync_all()
+            return data
+        except Exception as err:
+            raise UpdateFailed(f"Error communicating with PoolSync API: {err}") from err
