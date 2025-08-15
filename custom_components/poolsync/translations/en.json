@@ -15,5 +15,17 @@
     "error": {
       "pushlink_failed": "Could not obtain password via push-link. Try again."
     }
+  },
+  "options": {
+    "step": {
+      "init": {
+        "title": "PoolSync options",
+        "description": "Adjust polling interval and HTTP request timeout.",
+        "data": {
+          "poll_seconds": "Poll interval (seconds)",
+          "request_timeout": "HTTP request timeout (seconds)"
+        }
+      }
+    }
   }
 }
