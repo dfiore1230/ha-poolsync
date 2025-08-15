@@ -1,7 +1,7 @@
 # PoolSync – Home Assistant Custom Integration
 
-### Thanks to u/SOCBRIAN as some of the onboarding work inspired ChatGPT/Codex in helping that function
-# https://github.com/socbrian/AP_PoolSync
+## Thanks to u/SOCBRIAN as some of the onboarding work inspired ChatGPT/Codex in helping that function
+#### https://github.com/socbrian/AP_PoolSync
 
 Local-polling integration for the PoolSync bridge.
 
