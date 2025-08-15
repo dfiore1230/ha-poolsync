@@ -9,15 +9,7 @@ from homeassistant.config_entries import ConfigEntry
 
 from .const import DOMAIN
 from .coordinator import PoolSyncCoordinator
-
-
-def _g(d: dict, *path, default=None):
-    cur: Any = d
-    for p in path:
-        if not isinstance(cur, dict) or p not in cur:
-            return default
-        cur = cur[p]
-    return cur
+from .util import _g
 
 
 async def async_setup_entry(
