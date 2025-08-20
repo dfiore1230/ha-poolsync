@@ -38,6 +38,9 @@ sys.modules["homeassistant.components.sensor"] = sensor_mod
 sensor_const_mod = types.ModuleType("homeassistant.components.sensor.const")
 sys.modules["homeassistant.components.sensor.const"] = sensor_const_mod
 
+button_mod = types.ModuleType("homeassistant.components.button")
+sys.modules["homeassistant.components.button"] = button_mod
+
 helpers_mod = types.ModuleType("homeassistant.helpers")
 sys.modules["homeassistant.helpers"] = helpers_mod
 
@@ -76,6 +79,11 @@ class SensorEntityDescription:
 sensor_mod.SensorEntity = SensorEntity
 sensor_mod.SensorEntityDescription = SensorEntityDescription
 
+class ButtonEntity:
+    pass
+
+button_mod.ButtonEntity = ButtonEntity
+
 class SensorDeviceClass:
     TEMPERATURE = "temperature"
     SIGNAL_STRENGTH = "signal_strength"
@@ -85,6 +93,9 @@ class SensorDeviceClass:
 
 sensor_const_mod.SensorDeviceClass = SensorDeviceClass
 class CoordinatorEntity:
+    def __init__(self, coordinator=None):
+        self.coordinator = coordinator
+
     @classmethod
     def __class_getitem__(cls, item):
         return cls
