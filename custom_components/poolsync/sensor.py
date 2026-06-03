@@ -26,6 +26,11 @@ from .const import DOMAIN
 from .util import _g
 
 
+# PoolSync reports user-facing water, air, and setpoint temperatures in Fahrenheit.
+# Keep existing descriptor keys stable even when their suffix says "_c".
+POOLSYNC_TEMPERATURE_UNIT = UnitOfTemperature.FAHRENHEIT
+
+
 @dataclass(frozen=True)
 class PoolSyncSensorDesc(SensorEntityDescription):
     """Extend SensorEntityDescription with a value extractor."""
@@ -118,7 +123,7 @@ SENSORS: list[PoolSyncSensorDesc] = [
         key="water_temp_c",
         name="Pool Water Temperature",
         device_class=SensorDeviceClass.TEMPERATURE,
-        native_unit_of_measurement=UnitOfTemperature.CELSIUS,
+        native_unit_of_measurement=POOLSYNC_TEMPERATURE_UNIT,
         value_fn=lambda d: _g(_dev0(d), "status", "waterTemp"),
     ),
     PoolSyncSensorDesc(
@@ -301,14 +306,14 @@ async def async_setup_entry(
                 key="hp_water_temp_c",
                 name="Heat Pump Water Temperature",
                 device_class=SensorDeviceClass.TEMPERATURE,
-                native_unit_of_measurement=UnitOfTemperature.CELSIUS,
+                native_unit_of_measurement=POOLSYNC_TEMPERATURE_UNIT,
                 value_fn=lambda d, i=hp_idx: _g(d, "devices", i, "status", "waterTemp"),
             ),
             PoolSyncSensorDesc(
                 key="hp_air_temp_c",
                 name="Heat Pump Air Temperature",
                 device_class=SensorDeviceClass.TEMPERATURE,
-                native_unit_of_measurement=UnitOfTemperature.CELSIUS,
+                native_unit_of_measurement=POOLSYNC_TEMPERATURE_UNIT,
                 value_fn=lambda d, i=hp_idx: _g(d, "devices", i, "status", "airTemp"),
             ),
             PoolSyncSensorDesc(
@@ -320,7 +325,7 @@ async def async_setup_entry(
                 key="hp_setpoint_temp_c",
                 name="Heat Pump SetPoint Temperature",
                 device_class=SensorDeviceClass.TEMPERATURE,
-                native_unit_of_measurement=UnitOfTemperature.CELSIUS,
+                native_unit_of_measurement=POOLSYNC_TEMPERATURE_UNIT,
                 value_fn=lambda d, i=hp_idx: _g(d, "devices", i, "config", "setpoint"),
             ),
         ]
@@ -328,4 +333,3 @@ async def async_setup_entry(
             entities.append(PoolSyncSensor(coordinator, entry, desc))
 
     async_add_entities(entities, update_before_add=True)
-
